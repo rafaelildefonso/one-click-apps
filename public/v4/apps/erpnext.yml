@@ -157,9 +157,14 @@ services:
             notExposeAsWebApp: true
             dockerfileLines:
                 - FROM frappe/$$cap_APP_TYPE:$$cap_APP_VERSION
+                - 'RUN apt-get update && apt-get install -y wait-for-it'
                 - '# Create a multi-line startup.sh script during image build'
                 - RUN echo '#/bin/bash' > startup.sh && cat >> startup.sh <<'EOF'
+                - wait-for-it -t 30 $DB_HOST:$DB_PORT
+                - wait-for-it -t 30 $REDIS_CACHE:6379
+                - wait-for-it -t 30 $REDIS_QUEUE:6379
                 - echo "Starting configuration";
+                - mkdir -p sites
                 - ls -1 apps > sites/apps.txt;
                 - echo "Apps Configured";
                 - bench set-config -g db_host $DB_HOST;
@@ -174,14 +179,12 @@ services:
                 - bench set-config -gp socketio_port $SOCKETIO_PORT;
                 - echo "Socketio Port set to $SOCKETIO_PORT";
                 - echo "Configuration complete";
-                - exit 0;
+                - touch /tmp/config-done
+                - tail -f /dev/null
                 - EOF
                 - '# Make the script executable'
                 - RUN chmod a+x startup.sh
                 - CMD ["startup.sh"]
-        depends_on:
-            configurator:
-                condition: service_completed_successfully
         volumes:
             - $$cap_appname-sites:/home/frappe/frappe-bench/sites
             - $$cap_appname-logs:/home/frappe/frappe-bench/logs
@@ -342,6 +345,7 @@ services:
             notExposeAsWebApp: true
             dockerfileLines:
                 - FROM frappe/$$cap_APP_TYPE:$$cap_APP_VERSION
+                - 'RUN apt-get update && apt-get install -y wait-for-it'
                 - '# Create a multi-line startup.sh script during image build'
                 - RUN echo '#/bin/bash' > startup.sh && cat >> startup.sh <<'EOF'
                 - wait-for-it -t 120 \$DB_HOST:\$DB_PORT;
