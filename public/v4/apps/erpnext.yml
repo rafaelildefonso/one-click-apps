@@ -24,7 +24,7 @@ caproverOneClickApp:
           defaultValue: v15
         - id: $$cap_DB_HOST
           label: Mariadb Host
-          defaultValue: srv-captain--mariadb-db
+          defaultValue: srv-captain--$$cap_appname-db
         - id: $$cap_DB_PORT
           label: Mariadb Port
           defaultValue: '3306'
@@ -63,7 +63,7 @@ caproverOneClickApp:
             This is a all-in-one Captain Template and will deploy all services 
             needed for ERPNext or Frappe execution environment.
 
-            In total this template will launch 11 containers
+            In total this template will launch 12 containers
 
             2 Redis Instances             - OK if Running
             1 Mariadb Instance            - OK if Running
@@ -74,16 +74,16 @@ caproverOneClickApp:
             1 Socketio Service            - OK if Running
 
             1 Configurator Container      - OK if DEAD
-            1 Site Creator        - OK if DEAD
+            1 Site Creator                - OK if DEAD
         end: |-
-            We launched 11 containers, to launch ERPNext/Frappe
+            We launched 12 containers, to launch ERPNext/Frappe
 
-            Your ERPNext should be accessible at http://$cap_appname.$$cap_root_domain
+            Your ERPNext should be accessible at http://$$cap_appname.$$cap_root_domain
 
             Credentials:
             | Role       | Username                     | Password | 
-            +------------+--------------------------------------+----------|
-            |Admin       | Administrator                | $$cap_ADMIN_PASSWORD |
+            +------------+------------------------------+----------|
+            |Admin       | Administrator                | $$cap_ADMINISTRATOR_PASSWORD |
             |Sys Manager | $$cap_USER_EMAIL             | $$cap_USER_PASSWORD  |
 
             You should allways keep those services running 
@@ -102,7 +102,7 @@ caproverOneClickApp:
             | Scheduler        | Background Trigger | srv-captain--$$cap_appname-scheduler   |
 
             Additionally to those services, we launched also 2 additional containers
-            that surelly ca be delete, they are
+            that surelly can be deleted, they are
 
             | Service          |Purpose             |Internal Host |
             +------------------+--------------------+--------------+
@@ -131,15 +131,26 @@ x-redis-defaults:
         notExposeAsWebApp: true
     image: redis:6.2-alpine
     deploy:
-        restart_condition:
+        restart_policy:
             condition: on-failure
 services:
+    $$cap_appname-db:
+        caproverExtra:
+            notExposeAsWebApp: true
+        image: mariadb:10.6
+        volumes:
+            - $$cap_appname-db-data:/var/lib/mysql
+        environment:
+            MYSQL_ROOT_PASSWORD: $$cap_DB_ROOT_PASSWORD
+        deploy:
+            restart_policy:
+                condition: on-failure
     $$cap_appname-redis-queue:
         caproverExtra:
             notExposeAsWebApp: true
         image: redis:6.2-alpine
         deploy:
-            restart_condition:
+            restart_policy:
                 condition: on-failure
         volumes:
             - $$cap_appname-redis-queue-data:/data
@@ -148,7 +159,7 @@ services:
             notExposeAsWebApp: true
         image: redis:6.2-alpine
         deploy:
-            restart_condition:
+            restart_policy:
                 condition: on-failure
         volumes:
             - $$cap_appname-redis-cache-data:/data
@@ -159,7 +170,7 @@ services:
                 - FROM frappe/$$cap_APP_TYPE:$$cap_APP_VERSION
                 - 'RUN apt-get update && apt-get install -y wait-for-it'
                 - '# Create a multi-line startup.sh script during image build'
-                - RUN echo '#/bin/bash' > startup.sh && cat >> startup.sh <<'EOF'
+                - RUN echo '#!/bin/bash' > startup.sh && cat >> startup.sh <<'EOF'
                 - wait-for-it -t 30 $DB_HOST:$DB_PORT
                 - wait-for-it -t 30 $REDIS_CACHE:6379
                 - wait-for-it -t 30 $REDIS_QUEUE:6379
@@ -179,8 +190,6 @@ services:
                 - bench set-config -gp socketio_port $SOCKETIO_PORT;
                 - echo "Socketio Port set to $SOCKETIO_PORT";
                 - echo "Configuration complete";
-                - touch /tmp/config-done
-                - tail -f /dev/null
                 - EOF
                 - '# Make the script executable'
                 - RUN chmod a+x startup.sh
@@ -208,13 +217,16 @@ services:
             - $$cap_appname-sites:/home/frappe/frappe-bench/sites
             - $$cap_appname-logs:/home/frappe/frappe-bench/logs
         platform: linux/amd64
+        deploy:
+            restart_policy:
+                condition: on-failure
     $$cap_appname:
         caproverExtra:
             containerHttpPort: $$cap_BACKEND_PORT
             dockerfileLines:
                 - FROM frappe/$$cap_APP_TYPE:$$cap_APP_VERSION
                 - '# Create a multi-line startup.sh script during image build'
-                - RUN echo '#/bin/bash' > startup.sh && cat >> startup.sh <<'EOF'
+                - RUN echo '#!/bin/bash' > startup.sh && cat >> startup.sh <<'EOF'
                 - '#!/bin/bash'
                 - ''
                 - '# Set variables that do not exist'
@@ -281,10 +293,13 @@ services:
             SOCKETIO: srv-captain--$$cap_appname-websocket:$$cap_SOCKETIO_PORT
             FRAPPE_SITE_NAME_HEADER: $$cap_appname.$$cap_root_domain
             UPSTREAM_REAL_IP_ADDRESS: $$cap_UPSTREAM_REAL_IP_ADDRESS
-            UPSTREAM_IP_HEADER: $$cap_UPSTREAM_REAL_IP_HEADER
-            UPSTREAM_IP_RECURSIVE: $$cap_UPSTREAM_IP_RECURSIVE
+            UPSTREAM_REAL_IP_HEADER: $$cap_UPSTREAM_REAL_IP_HEADER
+            UPSTREAM_REAL_IP_RECURSIVE: $$cap_UPSTREAM_IP_RECURSIVE
             PROXY_READ_TIMEOUT: $$cap_PROXY_READ_TIMEOUT
             CLIENT_MAX_BODY_SIZE: $$cap_CLIENT_MAX_BODY_SIZE
+        deploy:
+            restart_policy:
+                condition: on-failure
     $$cap_appname-websocket:
         caproverExtra:
             notExposeAsWebApp: true
@@ -303,6 +318,9 @@ services:
             FRAPPE_REDIS_QUEUE: redis://srv-captain--$$cap_appname-redis-queue:6379
             FRAPPE_SOCKETIO_PORT: $$cap_SOCKETIO_PORT
         platform: linux/amd64
+        deploy:
+            restart_policy:
+                condition: on-failure
     $$cap_appname-queue-short:
         caproverExtra:
             notExposeAsWebApp: true
@@ -315,6 +333,9 @@ services:
         volumes:
             - $$cap_appname-sites:/home/frappe/frappe-bench/sites
             - $$cap_appname-logs:/home/frappe/frappe-bench/logs
+        deploy:
+            restart_policy:
+                condition: on-failure
     $$cap_appname-queue-long:
         caproverExtra:
             notExposeAsWebApp: true
@@ -327,6 +348,9 @@ services:
         volumes:
             - $$cap_appname-sites:/home/frappe/frappe-bench/sites
             - $$cap_appname-logs:/home/frappe/frappe-bench/logs
+        deploy:
+            restart_policy:
+                condition: on-failure
     $$cap_appname-scheduler:
         caproverExtra:
             notExposeAsWebApp: true
@@ -340,6 +364,9 @@ services:
         volumes:
             - $$cap_appname-sites:/home/frappe/frappe-bench/sites
             - $$cap_appname-logs:/home/frappe/frappe-bench/logs
+        deploy:
+            restart_policy:
+                condition: on-failure
     $$cap_appname-site-creator:
         caproverExtra:
             notExposeAsWebApp: true
@@ -347,7 +374,7 @@ services:
                 - FROM frappe/$$cap_APP_TYPE:$$cap_APP_VERSION
                 - 'RUN apt-get update && apt-get install -y wait-for-it'
                 - '# Create a multi-line startup.sh script during image build'
-                - RUN echo '#/bin/bash' > startup.sh && cat >> startup.sh <<'EOF'
+                - RUN echo '#!/bin/bash' > startup.sh && cat >> startup.sh <<'EOF'
                 - wait-for-it -t 120 \$DB_HOST:\$DB_PORT;
                 - wait-for-it -t 120 \$REDIS_CACHE;
                 - wait-for-it -t 120 \$REDIS_SOCKETIO;
@@ -382,9 +409,11 @@ services:
                 - "  bench add-system-manager --email=\\$USER_EMAIL
                   --password=\\$USER_PASSWORD;"
                 - '  bench scheduler enable;'
+                - '  echo "New site \\$SITE created successfully!";'
+                - else
+                - '  echo "Site \\$SITE already exists. Skipping creation.";'
                 - fi;
-                - ''
-                - echo "New site $SITE created sucessfully!";
+                - exit 0;
                 - EOF
                 - '# Make the script executable'
                 - RUN chmod a+x startup.sh
